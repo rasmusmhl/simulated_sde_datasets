@@ -1,0 +1,15 @@
+name: simulated_sde_datasets
+dependencies:
+- python==3.10
+- pyyaml
+- matplotlib
+- pip
+- pip:
+  - -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+  - jax[cuda12_pip]
+  - numpy
+  - distrax
+  - diffrax
+  - pytest
+  - jraph
+  - seaborn
