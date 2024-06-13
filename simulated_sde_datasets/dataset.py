@@ -2,7 +2,8 @@ import jax
 import jax.numpy as jnp
 import diffrax
 import distrax
-
+from copy import deepcopy
+from typing import Optional, Sequence
 
 from .utils import dataloader
 
@@ -22,12 +23,12 @@ class Dataset:
         return self.data[index]
 
     def __len__(self):
-        return self.dataset_size
+        return self.data.shape[0]
 
     def make_partitions(self, train_pct=0.8, val_pct=0.1):
-        n_train = int(self.dataset_size * train_pct)
-        n_val = int(self.dataset_size * val_pct)
-
+        dataset_size = len(self)
+        n_train = int(dataset_size * train_pct)
+        n_val = int(dataset_size * val_pct)
         # TODO: These do not include random permutations; should they?
         self.train_data = self.data[:n_train]
         self.val_data = self.data[n_train : n_train + n_val]
@@ -95,6 +96,8 @@ class SimulatedSDEDatateset(Dataset):
         weakly_diagonal: bool = True,
         observation_model: distrax.Distribution = distrax.Normal(loc=0.0, scale=0.01),
         store_brownian_motion_keys: bool = False,
+        hold_out_tails: bool = False,
+        tail_quantile: Optional[float] = None,
     ):
         super().__init__()
         self.data_dimensions = data_dimensions
@@ -135,6 +138,11 @@ class SimulatedSDEDatateset(Dataset):
 
         self.store_brownian_motion_keys = store_brownian_motion_keys
         self.brownian_motion_keys = None
+
+        self.hold_out_tails = hold_out_tails
+        self.tail_quantile = tail_quantile
+        self.data_tails = None
+        self.data_all = None
 
     def solve(self, y0, bm_key, args=None):
         brownian_motion = diffrax.VirtualBrownianTree(
@@ -178,6 +186,41 @@ class SimulatedSDEDatateset(Dataset):
         )
         return ys
 
+    def get_held_out_tail(self, quantile=0.9, batch_size=16, key=jax.random.key(0)):
+        # if quantile is a single float, we get everything above
+        # but if its a list of floats, we get everything in the interval
+        max_abs = jnp.max(jnp.abs(self.data_all), axis=[1, 2])
+        if isinstance(quantile, Sequence):
+            assert len(quantile) == 2
+            limleft = jnp.quantile(max_abs, quantile[0])
+            limright = jnp.quantile(max_abs, quantile[1])
+            mask = (max_abs > limleft) & (max_abs < limright)
+        else:
+            mask = max_abs > jnp.quantile(max_abs, quantile)
+
+        def make_dict(x):
+            out = {"data": x}
+            if self.time_series_dataset:
+                n = x[0].shape[0]
+                out["ts"] = jnp.tile(self.ts.reshape(1, -1), [n, 1])
+            return out
+
+        data = self.data_all[mask]
+        return dataloader(
+            make_dict(data),
+            batch_size=data.shape[0],
+            loop=False,
+            key=key,
+        )
+
+    def partition_tails(self):
+        max_abs = jnp.max(jnp.abs(self.data), axis=[1, 2])
+        mask = max_abs < jnp.quantile(max_abs, self.tail_quantile)
+
+        self.data_all = deepcopy(self.data)
+        self.data = deepcopy(self.data[mask])
+        self.data_tails = deepcopy(self.data_all[~mask])
+
     def setup(self, key):
         trajectory_key, noise_key = jax.random.split(key, 2)
         trajectories = self.get_trajectories(trajectory_key)
@@ -195,6 +238,11 @@ class SimulatedSDEDatateset(Dataset):
             sample_shape=ys_noise_free.shape,
         )
         ys = ys_noise_free + noise
+
         self.data = ys[:, self.burn :, :]
         self.ts = self.ts[self.burn :]
         self.t0, self.t1 = self.ts[0], self.ts[-1]
+
+        if self.hold_out_tails:
+            print("Holding out tails.")
+            self.partition_tails()
