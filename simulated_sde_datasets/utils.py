@@ -2,10 +2,8 @@ import jax
 import jax.numpy as jnp
 
 
-def dataloader(dataset_dict, batch_size, loop, key, dataset_size=None):
-    dataset_size = (
-        dataset_dict["data"].shape[0] if dataset_size is None else dataset_size
-    )
+def dataloader(dataset_dict, batch_size, loop, key):
+    dataset_size = dataset_dict["data"].shape[0]
 
     indices = jnp.arange(dataset_size)
 
