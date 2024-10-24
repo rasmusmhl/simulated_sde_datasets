@@ -46,8 +46,12 @@ class Dataset:
         def make_dict(x):
             out = {"data": x}
             if self.time_series_dataset:
-                n = x[0].shape[0]
+                # TODO: this was:
+                # n = x[0].shape[0]
+                # but should be this?
+                n = x.shape[0]
                 out["ts"] = jnp.tile(self.ts.reshape(1, -1), [n, 1])
+
             return out
 
         if self.train_data is not None:

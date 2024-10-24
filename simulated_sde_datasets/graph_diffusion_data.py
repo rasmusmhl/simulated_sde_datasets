@@ -2,7 +2,7 @@ import jraph
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 
-from .graph_utils import build_circular_graph, draw_jraph_graph_structure
+# from .graph_utils import build_circular_graph, draw_jraph_graph_structure
 from .diffusion_data import StudentDiffusionDataset
 
 
@@ -32,7 +32,7 @@ class GraphStudentDiffusionDataset(StudentDiffusionDataset):
 
     def visualize_data(self, as_image=True):
         plt.figure(figsize=(5, 5))
-        draw_jraph_graph_structure(self.graph)
+        # draw_jraph_graph_structure(self.graph)
         spacer = 10
         plt.figure(figsize=(10, 10))
         for i in range(9):
